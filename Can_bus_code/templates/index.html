@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CAN Bus Telemetry</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --panel-bg: rgba(20, 25, 35, 0.6);
+            --border-color: rgba(0, 255, 204, 0.2);
+            --accent-cyan: #00ffcc;
+            --accent-red: #ff3366;
+            --text-main: #e2e8f0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            background-image: radial-gradient(circle at 50% 0%, #1a2a40 0%, transparent 50%);
+            color: var(--text-main);
+            margin: 0;
+            padding: 40px;
+            min-height: 100vh;
+        }
+
+        h1 {
+            text-align: center;
+            font-weight: 300;
+            letter-spacing: 2px;
+            margin-bottom: 40px;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.3);
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        /* Glassmorphism Panel */
+        .glass-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            transition: transform 0.2s ease;
+        }
+
+        .glass-panel:hover {
+            transform: translateY(-2px);
+            border-color: rgba(0, 255, 204, 0.4);
+        }
+
+        .panel-title {
+            font-size: 0.9rem;
+            color: #8fa3b0;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 10px;
+        }
+
+        .value-display {
+            font-size: 3rem;
+            font-weight: 200;
+            color: var(--accent-cyan);
+            margin: 10px 0;
+        }
+
+        .unit {
+            font-size: 1rem;
+            color: #8fa3b0;
+        }
+
+        /* Progress Bar */
+        .bar-container {
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+
+        .bar-fill {
+            height: 100%;
+            background: var(--accent-cyan);
+            width: 0%;
+            transition: width 0.1s ease;
+            box-shadow: 0 0 10px var(--accent-cyan);
+        }
+
+        /* Terminal Log */
+        .terminal {
+            height: 250px;
+            overflow-y: auto;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.85rem;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .terminal span.time { color: #8fa3b0; }
+        .terminal span.node { color: #a78bfa; width: 150px; display: inline-block; }
+        .terminal span.data { color: var(--accent-cyan); }
+        .terminal p { margin: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.02); }
+
+        /* Fault Buttons */
+        .sabotage-panel {
+            grid-column: 1 / -1;
+            border-color: rgba(255, 51, 102, 0.3);
+        }
+
+        .sabotage-title {
+            color: var(--accent-red);
+            border-bottom: 1px solid rgba(255, 51, 102, 0.2);
+        }
+
+        .btn-fault {
+            background: transparent;
+            color: var(--accent-red);
+            border: 1px solid var(--accent-red);
+            padding: 10px 20px;
+            margin-right: 10px;
+            margin-top: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            transition: all 0.2s ease;
+        }
+
+        .btn-fault:hover {
+            background: rgba(255, 51, 102, 0.1);
+            box-shadow: 0 0 10px rgba(255, 51, 102, 0.3);
+        }
+
+        .btn-fault.active {
+            background: var(--accent-red);
+            color: #000;
+            box-shadow: 0 0 20px var(--accent-red);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>NETWORK TELEMETRY</h1>
+
+    <div class="dashboard">
+        <div class="glass-panel sabotage-panel">
+            <div class="panel-title sabotage-title">System Sabotage (Fault Injection)</div>
+            <button class="btn-fault" onclick="toggleFault('drop_frames', this)">Drop Frames (30%)</button>
+            <button class="btn-fault" onclick="toggleFault('corrupt_payload', this)">Corrupt Engine Payload</button>
+            <button class="btn-fault" onclick="toggleFault('babbling_idiot', this)">Trigger Babbling Idiot (DoS)</button>
+            <button class="btn-fault" style="color: var(--accent-cyan); border-color: var(--accent-cyan); margin-left: 20px;" onclick="triggerReplay(this)">▶ INJECT GHOST CAR LOG</button>
+        </div>
+        <div class="glass-panel" id="panel-engine">
+            <div class="panel-title">Node: Engine Controller</div>
+            <div class="value-display"><span id="val-torque">--</span> <span class="unit">%</span></div>
+            <div style="font-size: 0.8rem; color: #8fa3b0;">Torque Output</div>
+            <div class="bar-container">
+                <div class="bar-fill" id="bar-torque"></div>
+            </div>
+        </div>
+
+        <div class="glass-panel" id="panel-trans">
+            <div class="panel-title">Node: Transmission</div>
+            <div class="value-display">G<span id="val-gear">-</span></div>
+            <div style="font-size: 0.8rem; color: #8fa3b0;">Current Gear</div>
+        </div>
+
+        <div class="glass-panel" id="panel-brakes">
+            <div class="panel-title">Node: ABS System</div>
+            <div class="value-display" id="val-brake" style="color: var(--text-main);">RELEASED</div>
+            <div style="font-size: 0.8rem; color: #8fa3b0;">Pedal Status</div>
+        </div>
+    </div>
+
+    <div class="glass-panel">
+        <div class="panel-title">Live Bus Traffic</div>
+        <div class="terminal" id="log-terminal"></div>
+    </div>
+
+    <script>
+        const socket = io();
+        const logTerminal = document.getElementById('log-terminal');
+        let activeFaults = {
+            'drop_frames': false,
+            'corrupt_payload': false,
+            'babbling_idiot': false
+        };
+
+        function toggleFault(faultType, btnElement) {
+            activeFaults[faultType] = !activeFaults[faultType];
+            
+            // Toggle UI button glow
+            if(activeFaults[faultType]) {
+                btnElement.classList.add('active');
+            } else {
+                btnElement.classList.remove('active');
+            }
+            
+            // Shoot command to Python backend
+            socket.emit('trigger_fault', {type: faultType, state: activeFaults[faultType]});
+        }
+        function triggerReplay(btnElement) {
+            // Give visual feedback that the replay is running
+            const originalText = btnElement.innerText;
+            btnElement.innerText = "EXECUTING REPLAY...";
+            btnElement.style.background = "rgba(0, 255, 204, 0.2)";
+            
+            // Tell the Python backend to fire the script
+            socket.emit('trigger_replay');
+            
+            // Reset the button visual after 2 seconds
+            setTimeout(() => {
+                btnElement.innerText = originalText;
+                btnElement.style.background = "transparent";
+            }, 2000);
+        }
+        socket.on('can_data', function(msg) {
+            // Update UI based on which node broadcasted the data
+            if (msg.node === 'EngineController') {
+                const torque = msg.data.EngineTorque;
+                document.getElementById('val-torque').innerText = torque;
+                document.getElementById('bar-torque').style.width = torque + '%';
+            } 
+            else if (msg.node === 'Transmission') {
+                document.getElementById('val-gear').innerText = msg.data.GearPosition;
+            }
+            else if (msg.node === 'Brakes') {
+                const brake = msg.data.BrakePedal;
+                const brakeUI = document.getElementById('val-brake');
+                if (brake > 0) {
+                    brakeUI.innerText = 'ENGAGED (' + brake + '%)';
+                    brakeUI.style.color = 'var(--accent-red)';
+                    brakeUI.style.textShadow = '0 0 10px rgba(255, 51, 102, 0.5)';
+                } else {
+                    brakeUI.innerText = 'RELEASED';
+                    brakeUI.style.color = 'var(--text-main)';
+                    brakeUI.style.textShadow = 'none';
+                }
+            }
+
+            // Append to terminal log
+            const logEntry = document.createElement('p');
+            logEntry.innerHTML = `<span class="time">[${msg.time}]</span> <span class="node">${msg.node}</span> <span class="data">${JSON.stringify(msg.data)}</span>`;
+            logTerminal.appendChild(logEntry);
+
+            // Auto-scroll terminal to bottom, but limit to 100 items to prevent memory bloat
+            if (logTerminal.children.length > 100) {
+                logTerminal.removeChild(logTerminal.firstChild);
+            }
+            logTerminal.scrollTop = logTerminal.scrollHeight;
+        });
+    </script>
+</body>
+</html>

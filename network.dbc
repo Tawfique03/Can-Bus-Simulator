@@ -1,0 +1,17 @@
+VERSION ""
+
+BS_:
+
+BU_:
+
+BO_ 2364539904 EngineController: 8 Vector__XXX
+ SG_ EngineTorque : 0|8@1+ (1,-125) [-125|130] "%" Vector__XXX
+
+BO_ 2565860352 Transmission: 8 Vector__XXX
+ SG_ GearPosition : 0|8@1+ (1,0) [0|255] "Gear" Vector__XXX
+
+BO_ 2364539136 Brakes: 8 Vector__XXX
+ SG_ BrakePedal : 0|8@1+ (0.4,0) [0|100] "%" Vector__XXX
+
+BO_ 2565869056 VehicleDistance: 8 Vector__XXX
+ SG_ Distance : 0|8@1+ (1,0) [0|255] "km" Vector__XXX
