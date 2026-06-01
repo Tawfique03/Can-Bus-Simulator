@@ -8,7 +8,7 @@ import matplotlib.animation as animation
 
 DBC_FILE = 'network.dbc'
 
-print("Loading Database and Initializing Network...")
+print("Loading Database and Initializing Network.....")
 db = cantools.database.load_file(DBC_FILE)
 
 # Node A: The Engine Controller (Transmitter)
